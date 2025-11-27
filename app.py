@@ -7,7 +7,7 @@ from flask import Flask, render_template_string, request, jsonify
 app = Flask(__name__)
 
 # ==========================================
-#  BACKEND LOGIC
+#  AI & HEURISTIC LOGIC
 # ==========================================
 
 def calculate_entropy(password):
@@ -17,82 +17,103 @@ def calculate_entropy(password):
     if re.search(r"[A-Z]", password): pool_size += 26
     if re.search(r"\d", password): pool_size += 10
     if re.search(r"[^a-zA-Z\d]", password): pool_size += 32
-    
     if pool_size == 0: return 0
     return len(password) * math.log2(pool_size)
 
-def estimate_crack_time(entropy):
+def ai_pattern_recognition(password):
     """
-    Estimates time to crack based on a modern GPU rig 
-    (assuming 100 Billion guesses/second - RTX 4090 cluster benchmark).
+    Simulates a Defensive AI model analyzing semantic patterns.
+    Returns a vulnerability score (0-100) and specific AI insights.
     """
-    guesses_per_sec = 100_000_000_000 
-    seconds = (2 ** entropy) / guesses_per_sec
+    vuln_score = 0
+    insights = []
+    lower_pw = password.lower()
+
+    # 1. Leetspeak / Substitution Detection (AI is great at spotting this)
+    # Mapping common subs: @->a, 1->i, 0->o, etc.
+    normalized = lower_pw.replace('@', 'a').replace('1', 'i').replace('0', 'o').replace('3', 'e').replace('$', 's').replace('!', 'i')
     
+    common_roots = ['password', 'admin', 'welcome', 'login', 'dragon', 'baseball', 'super', 'master', '123456', 'qwerty']
+    
+    # Check for root words inside the password
+    for root in common_roots:
+        if root in normalized:
+            vuln_score += 40
+            insights.append(f"AI Detected semantic root: '{root}' (even with substitutions)")
+            break
+
+    # 2. Keyboard Walk Detection (Spatial Pattern Recognition)
+    walks = ['qwerty', 'asdfgh', 'zxcvbn', '12345', 'qazwsx']
+    for walk in walks:
+        if walk in lower_pw:
+            vuln_score += 30
+            insights.append("Spatial keyboard pattern detected (High predictability)")
+            break
+
+    # 3. Repetition Patterns
+    if re.search(r'(.)\1\1', password):
+        vuln_score += 20
+        insights.append("Repetitive character sequence found")
+
+    # 4. Year/Date detection
+    if re.search(r'(19|20)\d{2}', password):
+        vuln_score += 15
+        insights.append("Date pattern detected (Years are easy for AI to guess)")
+
+    # Cap score
+    vuln_score = min(100, vuln_score)
+    
+    ai_verdict = "AI-Resistant"
+    if vuln_score > 70: ai_verdict = "Highly Vulnerable to PassGAN"
+    elif vuln_score > 30: ai_verdict = "Susceptible to Hybrid Attacks"
+
+    return {
+        "vuln_score": vuln_score,
+        "insights": insights,
+        "verdict": ai_verdict
+    }
+
+def estimate_crack_time(entropy):
+    guesses_per_sec = 100_000_000_000 # RTX 4090 Cluster
+    seconds = (2 ** entropy) / guesses_per_sec
     if seconds < 60: return "Instantly"
-    if seconds < 3600: return f"{int(seconds/60)} minutes"
-    if seconds < 86400: return f"{int(seconds/3600)} hours"
-    if seconds < 31536000: return f"{int(seconds/86400)} days"
-    if seconds < 3153600000: return f"{int(seconds/31536000)} years"
+    if seconds < 3600: return f"{int(seconds/60)} Mins"
+    if seconds < 86400: return f"{int(seconds/3600)} Hrs"
+    if seconds < 31536000: return f"{int(seconds/86400)} Days"
     return "Centuries"
 
 def check_password_strength(password):
+    # Basic Checks
     score = 0
     feedback = []
-    
-    # Length Check
-    if len(password) < 8:
-        feedback.append("Too short (min 8 chars)")
-    elif len(password) >= 12:
-        score += 2
-    else:
-        score += 1
-        
-    # Complexity Checks
-    if re.search(r"[a-z]", password): score += 1
-    else: feedback.append("Missing lowercase")
-        
+    if len(password) >= 12: score += 2
+    elif len(password) >= 8: score += 1
     if re.search(r"[A-Z]", password): score += 1
-    else: feedback.append("Missing uppercase")
-        
     if re.search(r"\d", password): score += 1
-    else: feedback.append("Missing numbers")
-        
-    if re.search(r"[ !@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password): score += 1
-    else: feedback.append("Missing symbols")
+    if re.search(r"[^a-zA-Z\d]", password): score += 1
+    final_score = min(5, score)
 
-    # Normalize score to max 5
-    final_score = min(5, score - 1) if score > 1 else 0
-
+    # Advanced Calculations
     entropy = calculate_entropy(password)
     crack_time = estimate_crack_time(entropy)
+    ai_data = ai_pattern_recognition(password)
 
     return {
         "score": final_score,
-        "feedback": feedback,
-        "crack_time": crack_time
+        "crack_time": crack_time,
+        "ai_data": ai_data
     }
-
-def request_pwned_data(query_char):
-    url = 'https://api.pwnedpasswords.com/range/' + query_char
-    res = requests.get(url, timeout=5)
-    if res.status_code != 200:
-        raise RuntimeError(f'Error fetching: {res.status_code}')
-    return res
-
-def get_password_leaks_count(hashes, hash_to_check):
-    hashes = (line.split(':') for line in hashes.text.splitlines())
-    for h, count in hashes:
-        if h == hash_to_check:
-            return int(count)
-    return 0
 
 def pwned_api_check(password):
     sha1password = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
-    first5_char = sha1password[:5]
-    tail = sha1password[5:]
-    response = request_pwned_data(first5_char)
-    return get_password_leaks_count(response, tail)
+    first5, tail = sha1password[:5], sha1password[5:]
+    res = requests.get('https://api.pwnedpasswords.com/range/' + first5, timeout=5)
+    if res.status_code != 200: return 0
+    
+    hashes = (line.split(':') for line in res.text.splitlines())
+    for h, count in hashes:
+        if h == tail: return int(count)
+    return 0
 
 # ==========================================
 #  FRONTEND TEMPLATE
@@ -167,18 +188,18 @@ HTML_TEMPLATE = """
             <!-- Left: Text -->
             <div class="flex-1 text-center md:text-left">
                 <div class="inline-block px-3 py-1 mb-4 text-xs font-semibold tracking-wider text-indigo-400 uppercase bg-indigo-500/10 rounded-full border border-indigo-500/20">
-                    Version 2.0.0
+                    Version 2.5.0
                 </div>
                 <h1 class="text-5xl md:text-6xl font-bold mb-6 leading-tight">
                     Is your password <br>
                     <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 neon-glow">Breach Proof?</span>
                 </h1>
                 <p class="text-gray-400 text-lg mb-8 leading-relaxed">
-                    Check your exposure against <span class="text-white font-bold">600M+ leaked credentials</span> using k-Anonymity encryption. We never see your password.
+                    Check exposure against <span class="text-white font-bold">600M+ leaked credentials</span> and test resistance against <span class="text-indigo-400 font-bold">AI Pattern Recognition</span>.
                 </p>
                 
                 <div class="flex gap-4 justify-center md:justify-start text-sm text-gray-500">
-                    <div class="flex items-center gap-2"><i class="fas fa-lock text-green-500"></i> SHA-1 Hashed</div>
+                    <div class="flex items-center gap-2"><i class="fas fa-robot text-indigo-500"></i> AI Heuristics</div>
                     <div class="flex items-center gap-2"><i class="fas fa-ghost text-purple-500"></i> k-Anonymity</div>
                 </div>
             </div>
@@ -217,6 +238,18 @@ HTML_TEMPLATE = """
                             <div class="text-xs text-gray-400 uppercase mb-1">Estimated Time to Crack</div>
                             <div id="crackTime" class="text-2xl font-bold text-white mono">--</div>
                             <div class="text-xs text-gray-500 mt-1">Assuming RTX 4090 Cluster</div>
+                        </div>
+
+                         <!-- AI Analysis Box -->
+                        <div class="bg-indigo-500/5 rounded-lg p-4 border border-indigo-500/20">
+                            <div class="flex justify-between items-center mb-2">
+                                <div class="text-xs text-indigo-400 uppercase font-bold"><i class="fas fa-brain mr-1"></i> AI Resistance</div>
+                                <div id="aiVerdict" class="text-xs text-white bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">--</div>
+                            </div>
+                            <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden mb-2">
+                                <div id="aiBar" class="h-full bg-indigo-500 w-0 transition-all duration-1000"></div>
+                            </div>
+                            <ul id="aiInsights" class="text-xs text-gray-400 list-disc list-inside space-y-1"></ul>
                         </div>
 
                         <!-- Breach Status -->
@@ -269,12 +302,12 @@ HTML_TEMPLATE = """
                 <!-- Card 3 -->
                 <div class="glass p-8 rounded-2xl hover:bg-white/5 transition duration-300 border-t-4 border-t-purple-500">
                     <div class="bg-purple-500/10 w-14 h-14 rounded-lg flex items-center justify-center mb-6 text-purple-400 text-2xl">
-                        <i class="fas fa-fish"></i>
+                        <i class="fas fa-robot"></i>
                     </div>
-                    <h3 class="text-xl font-bold mb-3">Phishing & Social Eng</h3>
+                    <h3 class="text-xl font-bold mb-3">AI & PassGAN</h3>
                     <p class="text-gray-400 text-sm leading-relaxed">
-                        Deceptive emails that look legitimate (like Netflix or Google) tricking you into typing your password on a fake site.<br><br>
-                        <span class="text-white font-semibold">Defense:</span> Check URLs and use a Password Manager (which won't auto-fill on fake sites).
+                        Generative AI models trained on leaked passwords can "predict" human patterns (like capitalizing the first letter) better than random guessing.<br><br>
+                        <span class="text-white font-semibold">Defense:</span> High entropy and randomness (e.g. 4 random words).
                     </p>
                 </div>
             </div>
@@ -409,6 +442,35 @@ HTML_TEMPLATE = """
             // Crack Time
             document.getElementById('crackTime').textContent = data.structure.crack_time;
 
+            // AI Logic Integration
+            const aiData = data.structure.ai_data;
+            document.getElementById('aiVerdict').textContent = aiData.verdict;
+            const aiBar = document.getElementById('aiBar');
+            aiBar.style.width = aiData.vuln_score + '%';
+            
+            // AI Color Logic (Vulnerability Score: High is BAD)
+            if(aiData.vuln_score > 70) { 
+                aiBar.className = "h-full bg-red-500 w-0 transition-all duration-1000"; 
+                document.getElementById('aiVerdict').classList.add('text-red-400', 'bg-red-500/20', 'border-red-500/30');
+            } else if(aiData.vuln_score > 30) { 
+                aiBar.className = "h-full bg-yellow-500 w-0 transition-all duration-1000";
+                document.getElementById('aiVerdict').classList.add('text-yellow-400', 'bg-yellow-500/20', 'border-yellow-500/30');
+            } else { 
+                aiBar.className = "h-full bg-emerald-500 w-0 transition-all duration-1000";
+                document.getElementById('aiVerdict').classList.add('text-emerald-400', 'bg-emerald-500/20', 'border-emerald-500/30');
+            }
+
+            // AI Insights
+            const aiList = document.getElementById('aiInsights');
+            aiList.innerHTML = '';
+            if(aiData.insights.length === 0) {
+                 aiList.innerHTML = '<li class="text-emerald-400">No predictable patterns found.</li>';
+            } else {
+                aiData.insights.forEach(i => {
+                    aiList.innerHTML += `<li class="text-red-300">${i}</li>`;
+                });
+            }
+
             // Breach Status
             const breachDiv = document.getElementById('breachStatus');
             if (data.breaches > 0) {
@@ -436,10 +498,6 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# ==========================================
-#  FLASK ROUTES
-# ==========================================
-
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -448,20 +506,12 @@ def index():
 def analyze():
     data = request.get_json()
     password = data.get('password', '')
-    
-    # 1. Check structural strength & Entropy
-    strength_data = check_password_strength(password)
-    
-    # 2. Check API for breaches
+    strength = check_password_strength(password)
     try:
-        breach_count = pwned_api_check(password)
-    except Exception:
-        breach_count = -1 
-        
-    return jsonify({
-        "structure": strength_data,
-        "breaches": breach_count
-    })
+        breaches = pwned_api_check(password)
+    except:
+        breaches = -1
+    return jsonify({"structure": strength, "breaches": breaches})
 
 if __name__ == '__main__':
     app.run(debug=True)
