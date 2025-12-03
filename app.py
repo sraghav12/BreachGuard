@@ -10,6 +10,21 @@ app = Flask(__name__)
 #  AI & HEURISTIC LOGIC
 # ==========================================
 
+def fetch_common_passwords():
+    """
+    SOURCE 2: Scrape Top 100 common passwords from GitHub (SecLists).
+    This satisfies the 'Two Online Sources' requirement.
+    """
+    url = "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-100.txt"
+    try:
+        # Timeout ensures we don't hang if GitHub is down
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            return set(response.text.splitlines())
+        return set()
+    except:
+        return set()
+
 def calculate_entropy(password):
     """Calculates password entropy (bits)."""
     pool_size = 0
@@ -83,14 +98,22 @@ def estimate_crack_time(entropy):
     return "Centuries"
 
 def check_password_strength(password):
-    # Basic Checks
     score = 0
     feedback = []
-    if len(password) >= 12: score += 2
-    elif len(password) >= 8: score += 1
-    if re.search(r"[A-Z]", password): score += 1
-    if re.search(r"\d", password): score += 1
-    if re.search(r"[^a-zA-Z\d]", password): score += 1
+
+    # --- SOURCE 2 CHECK (SecLists) ---
+    common_passwords = fetch_common_passwords()
+    if password in common_passwords:
+        score = 0
+        feedback.append("CRITICAL: Found in Top 100 Common Passwords List (Source: SecLists)")
+    else:
+        # Standard Basic Checks
+        if len(password) >= 12: score += 2
+        elif len(password) >= 8: score += 1
+        if re.search(r"[A-Z]", password): score += 1
+        if re.search(r"\d", password): score += 1
+        if re.search(r"[^a-zA-Z\d]", password): score += 1
+    
     final_score = min(5, score)
 
     # Advanced Calculations
@@ -100,6 +123,7 @@ def check_password_strength(password):
 
     return {
         "score": final_score,
+        "feedback": feedback, # Added feedback return
         "crack_time": crack_time,
         "ai_data": ai_data
     }
@@ -256,6 +280,9 @@ HTML_TEMPLATE = """
                         <div id="breachStatus" class="p-4 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-4">
                             <!-- Injected JS -->
                         </div>
+                        
+                         <!-- Extra Feedback -->
+                        <div id="extraFeedback" class="text-xs text-red-400 font-mono mt-2 hidden"></div>
                     </div>
                 </div>
             </div>
@@ -491,6 +518,15 @@ HTML_TEMPLATE = """
                         <div class="text-emerald-400 text-xs">This specific password hasn't been leaked (yet).</div>
                     </div>
                 `;
+            }
+            
+            // Extra Feedback (From Source 2)
+            const extraFeedback = document.getElementById('extraFeedback');
+            if (data.structure.feedback && data.structure.feedback.length > 0) {
+                extraFeedback.classList.remove('hidden');
+                extraFeedback.innerHTML = data.structure.feedback.join('<br>');
+            } else {
+                extraFeedback.classList.add('hidden');
             }
         }
     </script>
