@@ -74,4 +74,4 @@ Local Comparison: The API returns all hashes starting with CBFDA. We loop throug
 
 Result: The API service never sees the user's full hash or password.
 
-Created by [Your Name]
+Created by Raghav
